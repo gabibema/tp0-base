@@ -14,6 +14,8 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - LOGGING_LEVEL=DEBUG
+    volumes:
+      - ./config/server_config.ini:/config.ini
     networks:
       - testing_net
 EOF
@@ -30,6 +32,8 @@ cat >> docker-compose-dev.yaml <<EOF
     environment:
       - CLI_ID=$i
       - CLI_LOG_LEVEL=DEBUG
+    volumes:
+      - ./config/client_config.ini:/config.ini
     networks:
       - testing_net
     depends_on:
