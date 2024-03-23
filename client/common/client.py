@@ -3,6 +3,8 @@ import time
 import logging
 import signal
 from configparser import ConfigParser
+from common.utils import Bet
+import common.message_protocol as mp
 
 class Client:
     def __init__(self, config):
@@ -16,6 +18,12 @@ class Client:
         logging.info(f"action: sigterm_received | result: initiating_shutdown | client_id: {self.config['id']}")
         self.keep_running = False  # Changes the value of the variable to False, so the client will stop.
 
+    
+    def make_bet(self, bet: Bet):
+        """Sends a bet to the server."""
+        mp.send_message(self.conn, bet.to_string())
+        logging.info(f"action: send_bet | result: success | client_id: {self.config['id']} | bet: {bet.to_string()}")
+        
     def create_client_socket(self):
         
         try:
@@ -51,3 +59,12 @@ class Client:
         
         logging.info(f"action: loop_finished | result: success | client_id: {self.config['id']}")
         self.conn.close()
+
+    def start(self, bet: Bet):
+        """
+        Starts the client and send a bet to the server
+        """
+        self.create_client_socket()
+        self.make_bet(bet)
+        logging.info(f"action: client_finished | result: success | client_id: {self.config['id']}")
+        
