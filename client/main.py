@@ -45,6 +45,7 @@ def main():
     client = Client(config)
     bet = Bet(config['agency'], config['first_name'], config['last_name'], config['document'], config['birthdate'], config['number'])
     client.start(bet)
+    client.close()
 
 if __name__ == "__main__":
     main()

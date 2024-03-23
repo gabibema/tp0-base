@@ -1,6 +1,7 @@
 import socket
 import logging
 import signal
+from common.utils import Bet, store_bets, bet_from_string
 import common.message_protocol as mp
 
 class Server:
@@ -46,11 +47,15 @@ class Server:
         client socket will also be closed
         """
         try:
-            msg = mp.receive_message(client_sock)
+            msg, is_protocol_message = mp.receive_message(client_sock)
             addr = client_sock.getpeername()
             logging.info(f'action: receive_message | result: success | ip: {addr[0]} | msg: {msg}')
-
-            client_sock.send("{}\n".format(msg).encode('utf-8'))
+            if is_protocol_message:
+                mp.send_message(client_sock, msg)
+                bet = bet_from_string(msg)
+                store_bets([bet])
+            else: 
+                client_sock.send("{}\n".format(msg).encode('utf-8'))
         except OSError as e:
             logging.error("action: receive_message | result: fail | error: {e}")
         finally:

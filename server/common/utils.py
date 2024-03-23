@@ -23,6 +23,8 @@ class Bet:
         self.document = document
         self.birthdate = datetime.date.fromisoformat(birthdate)
         self.number = int(number)
+    
+
 
 """ Checks whether a bet won the prize or not. """
 def has_won(bet: Bet) -> bool:
@@ -49,3 +51,8 @@ def load_bets() -> list[Bet]:
         for row in reader:
             yield Bet(row[0], row[1], row[2], row[3], row[4], row[5])
 
+
+def bet_from_string(bet_str: str) -> Bet:
+    
+    agency, first_name, last_name, document, birthdate, number = bet_str.split(',')
+    return Bet(agency, first_name, last_name, document, birthdate, number)

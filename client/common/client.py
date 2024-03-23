@@ -60,11 +60,30 @@ class Client:
         logging.info(f"action: loop_finished | result: success | client_id: {self.config['id']}")
         self.conn.close()
 
+    def get_server_response(self):
+        """
+        Receives the server response
+        """
+        try:
+            response, is_protocol_message = mp.receive_message(self.conn)
+            logging.info(f"action: receive_message | result: success | client_id: {self.config['id']} | msg: {response.strip()}")
+        except Exception as e:
+            logging.error(f"action: receive_message | result: fail | client_id: {self.config['id']} | error: {e}")
+            return
+
+
     def start(self, bet: Bet):
         """
         Starts the client and send a bet to the server
         """
         self.create_client_socket()
         self.make_bet(bet)
-        logging.info(f"action: client_finished | result: success | client_id: {self.config['id']}")
+        self.get_server_response()
+    
+    def close(self):
+        """
+        Closes the client
+        """
+        logging.info(f"action: client_closed | client_id: {self.config['id']}")
+        self.conn.close()
         
