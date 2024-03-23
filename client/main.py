@@ -1,7 +1,7 @@
 import configparser
 import os
 import logging
-from datetime import timedelta
+from common.utils import Bet
 from common.client import Client
 
 def init_config():
@@ -13,7 +13,13 @@ def init_config():
             'server_address': os.getenv('CLI_SERVER_ADDRESS', default=config['DEFAULT'].get('SERVER_ADDRESS')),
             'loop_lapse': float(os.getenv('CLI_LOOP_LAPSE', default=config['DEFAULT'].get('LOOP_LAPSE'))),
             'loop_period': float(os.getenv('CLI_LOOP_PERIOD', default=config['DEFAULT'].get('LOOP_PERIOD'))),
-            'log_level': os.getenv('CLI_LOG_LEVEL', default=config['DEFAULT'].get('LOG_LEVEL')).upper()
+            'log_level': os.getenv('CLI_LOG_LEVEL', default=config['DEFAULT'].get('LOG_LEVEL')).upper(),
+            'agency': os.getenv('AGENCIA', default=config['DEFAULT'].get('AGENCIA')),
+            'first_name': os.getenv('NOMBRE', default=config['DEFAULT'].get('NOMBRE')),
+            'last_name': os.getenv('APELLIDO', default=config['DEFAULT'].get('APELLIDO')),
+            'document': os.getenv('DOCUMENTO', default=config['DEFAULT'].get('DOCUMENTO')),
+            'birthdate': os.getenv('NACIMIENTO', default=config['DEFAULT'].get('NACIMIENTO')),
+            'number': os.getenv('NUMERO', default=config['DEFAULT'].get('NUMERO'))
         }
 
 
@@ -37,7 +43,8 @@ def main():
 
     
     client = Client(config)
-    client.start_client_loop()
+    bet = Bet(config['agency'], config['first_name'], config['last_name'], config['document'], config['birthdate'], config['number'])
+    client.start(bet)
 
 if __name__ == "__main__":
     main()
