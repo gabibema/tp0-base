@@ -5,6 +5,7 @@ MESSAGE_FLAG = {
     'NON_PROTOCOL': '0',
     'NORMAL': '1',
     'BET': '2',
+    'FINAL': '3',
 }
 
 SIZE_DELIMETER = ','
@@ -39,7 +40,7 @@ def read_header(conn:socket) -> tuple[str, str]:
     flag = read_until(conn, HEADER_DELIMETER)
     return (size, flag)
 
-def receive_message(conn:socket) -> str:
+def receive_message(conn:socket) -> tuple[str,str]:
     """
     Receives a message from a socket
     """

@@ -3,7 +3,7 @@ import time
 import logging
 import signal
 from configparser import ConfigParser
-from common.utils import Bet, bets_to_string
+from common.utils import Bet, bets_to_string, bets_from_string
 import common.message_protocol as mp
 
 class Client:
@@ -83,6 +83,14 @@ class Client:
             logging.info(f"action: send_bets | result: success | client_id: {self.config['id']} | bets_sent: {len(chunk)} | size: {len(bets_to_string(chunk))}")
             self.get_server_response()
             self.conn.close()
+        
+        self.create_client_socket()
+        mp.send_message(self.conn, f"{self.config['id']}", mp.MESSAGE_FLAG['FINAL'])
+        message,flag = mp.receive_message(self.conn)
+        if flag == mp.MESSAGE_FLAG['BET']:
+            bets = bets_from_string(message)
+            logging.info(f"action: receive_message | result: success | client_id: {self.config['id']} | winners_amount: {len(bets)}")
+        self.conn.close()
 
 
     
