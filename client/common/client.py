@@ -77,14 +77,16 @@ class Client:
         """Sends a bets to the server by chunks"""
         bets = list(bets)
         bets_split = [bets[i:i + self.config['batch_size']] for i in range(0, len(bets), self.config['batch_size'])]
+        self.create_client_socket()
         for chunk in bets_split:
-            self.create_client_socket()
+            if not self.keep_running:
+                self.close()
+                return
+                
             mp.send_message(self.conn, bets_to_string(chunk), mp.MESSAGE_FLAG['BET'])
             logging.info(f"action: send_bets | result: success | client_id: {self.config['id']} | bets_sent: {len(chunk)} | size: {len(bets_to_string(chunk))}")
             self.get_server_response()
-            self.conn.close()
         
-        self.create_client_socket()
         mp.send_message(self.conn, f"{self.config['id']}", mp.MESSAGE_FLAG['FINAL'])
         message,flag = mp.receive_message(self.conn)
         if flag == mp.MESSAGE_FLAG['BET']:
