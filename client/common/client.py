@@ -3,7 +3,7 @@ import time
 import logging
 import signal
 from configparser import ConfigParser
-from common.utils import Bet
+from common.utils import Bet, bets_to_string
 import common.message_protocol as mp
 
 class Client:
@@ -21,9 +21,9 @@ class Client:
     
     def make_bet(self, bet: Bet):
         """Sends a bet to the server."""
-        mp.send_message(self.conn, bet.to_string())
+        mp.send_message(self.conn, bet.to_string(), mp.MESSAGE_FLAG['BET'])
         logging.info(f"action: send_bet | result: success | client_id: {self.config['id']} | bet: {bet.to_string()}")
-        
+
     def create_client_socket(self):
         
         try:
@@ -65,20 +65,26 @@ class Client:
         Receives the server response
         """
         try:
-            response, is_protocol_message = mp.receive_message(self.conn)
-            logging.info(f"action: receive_message | result: success | client_id: {self.config['id']} | msg: {response.strip()}")
+            response, _ = mp.receive_message(self.conn)
+            logging.info(f"action: receive_message | result: success | client_id: {self.config['id']} | server_bets_received: {response.strip()}")
         except Exception as e:
             logging.error(f"action: receive_message | result: fail | client_id: {self.config['id']} | error: {e}")
             return
 
 
-    def start(self, bet: Bet):
-        """
-        Starts the client and send a bet to the server
-        """
-        self.create_client_socket()
-        self.make_bet(bet)
-        self.get_server_response()
+    def start(self, bets: list[Bet]):
+
+        """Sends a bets to the server by chunks"""
+        bets = list(bets)
+        bets_split = [bets[i:i + self.config['batch_size']] for i in range(0, len(bets), self.config['batch_size'])]
+        for chunk in bets_split:
+            self.create_client_socket()
+            mp.send_message(self.conn, bets_to_string(chunk), mp.MESSAGE_FLAG['BET'])
+            logging.info(f"action: send_bets | result: success | client_id: {self.config['id']} | bets_sent: {len(chunk)} | size: {len(bets_to_string(chunk))}")
+            self.get_server_response()
+            self.conn.close()
+
+
     
     def close(self):
         """

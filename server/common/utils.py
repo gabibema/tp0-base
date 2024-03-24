@@ -1,6 +1,6 @@
 import csv
 import datetime
-import time
+import logging
 
 
 """ Bets storage location. """
@@ -53,6 +53,9 @@ def load_bets() -> list[Bet]:
 
 
 def bet_from_string(bet_str: str) -> Bet:
-    
     agency, first_name, last_name, document, birthdate, number = bet_str.split(',')
     return Bet(agency, first_name, last_name, document, birthdate, number)
+
+def bets_from_string(bets_str: str) -> list[Bet]:
+    return [bet_from_string(bet_str) for bet_str in bets_str.split('\n') if bet_str]
+    
