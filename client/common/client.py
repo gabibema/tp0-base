@@ -65,11 +65,12 @@ class Client:
         Receives the server response
         """
         try:
-            response, _ = mp.receive_message(self.conn)
+            response, flag = mp.receive_message(self.conn)
             logging.info(f"action: receive_message | result: success | client_id: {self.config['id']} | server_bets_received: {response.strip()}")
         except Exception as e:
             logging.error(f"action: receive_message | result: fail | client_id: {self.config['id']} | error: {e}")
-            return
+            return None, None
+        return response, flag
 
 
     def start(self, bets: list[Bet]):
@@ -80,19 +81,23 @@ class Client:
         self.create_client_socket()
         for chunk in bets_split:
             if not self.keep_running:
-                self.close()
                 return
                 
             mp.send_message(self.conn, bets_to_string(chunk), mp.MESSAGE_FLAG['BET'])
             logging.info(f"action: send_bets | result: success | client_id: {self.config['id']} | bets_sent: {len(chunk)} | size: {len(bets_to_string(chunk))}")
-            self.get_server_response()
+            msg, flag = self.get_server_response()
+            if flag == mp.MESSAGE_FLAG['ERROR']:
+                logging.error(f"action: receive_message | result: connection_timeout | client_id: {self.config['id']} | error: {msg}")
+                return
         
         mp.send_message(self.conn, f"{self.config['id']}", mp.MESSAGE_FLAG['FINAL'])
         message,flag = mp.receive_message(self.conn)
-        if flag == mp.MESSAGE_FLAG['BET']:
+        if flag == mp.MESSAGE_FLAG['ERROR']:
+            logging.error(f"action: receive_message | result: connection_timeout | client_id: {self.config['id']} | error: {msg}")
+        elif flag == mp.MESSAGE_FLAG['BET']:
             bets = bets_from_string(message)
             logging.info(f"action: receive_message | result: success | client_id: {self.config['id']} | winners_amount: {len(bets)}")
-        self.conn.close()
+        
 
 
     

@@ -9,14 +9,18 @@ import common.message_protocol as mp
 AGENCY_RAFFLE = 5
 
 class Server:
-    def __init__(self, port, listen_backlog):
+    def __init__(self, port, listen_backlog, time_limit):
         self._pending_agencies = multiprocessing.Manager().dict()
-        self._server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self._server_socket.bind(('', port))
-        self._server_socket.listen(listen_backlog)
+        self._client_sockets = multiprocessing.Manager().list()
         self.keep_running = multiprocessing.Value('i', 1)
         self._lock_file = multiprocessing.Lock()
         self._lock_agencies = multiprocessing.Lock()
+        self._time_limit = datetime.now() + timedelta(seconds=time_limit)
+
+        self._server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._server_socket.bind(('', port))
+        self._server_socket.listen(listen_backlog)
+
         self._processes = []  
         signal.signal(signal.SIGTERM, self.handle_sigterm)
 
@@ -28,20 +32,29 @@ class Server:
         for p in self._processes:
             p.join()  
 
-    def run(self):
-        while self.keep_running.value and len(self._processes) < AGENCY_RAFFLE:
+    def run(self) -> bool:
+        failed = False
+
+        while self.keep_running.value and len(self._processes) < AGENCY_RAFFLE and self._time_limit > datetime.now():
             client_sock = self.__accept_new_connection()
             if client_sock:
                 client_process = multiprocessing.Process(target=self.__handle_client_connection, args=(client_sock,))
                 client_process.start()
                 self._processes.append(client_process)  
-        
-        while self.raffle_pending():
-            pass
-        
+
+        if self._time_limit > datetime.now():
+            while self.raffle_pending() and self._time_limit > datetime.now():
+                pass
+
+        if self._time_limit <= datetime.now():
+            failed = True
+            self.try_send_error()
+            self._server_socket.close()
+
         for p in self._processes:
             p.join()
 
+        return failed
 
     def raffle(self):
         """
@@ -71,6 +84,19 @@ class Server:
         """
         return len(self._pending_agencies) < AGENCY_RAFFLE
     
+    def try_send_error(self):
+        """
+        Try to send an error message to all clients
+
+        Function tries to send an error message to all clients in the server
+        """
+        for client_sock in self._client_sockets:
+            try:
+                mp.send_message(client_sock, "Server timeout", mp.MESSAGE_FLAG['ERROR'])
+                logging.info(f'action: send_error | result: success | ip: {client_sock.getpeername()[0]}')
+                client_sock.close()
+            except OSError as e:
+                logging.error(f'action: send_error | result: fail | error: {e}')
 
     def __handle_client_connection(self, client_sock):
         close_connection = True
@@ -92,6 +118,9 @@ class Server:
     def __handle_raffle_connection(self, client_sock, msg):
         addr = client_sock.getpeername()
         flag = mp.MESSAGE_FLAG['BET']
+
+        with self._lock_agencies:
+            self._client_sockets.append(client_sock)
 
         while flag == mp.MESSAGE_FLAG['BET']:
             bets = bets_from_string(msg)

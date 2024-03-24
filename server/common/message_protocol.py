@@ -6,6 +6,7 @@ MESSAGE_FLAG = {
     'NORMAL': '1',
     'BET': '2',
     'FINAL': '3',
+    'ERROR': '4'
 }
 
 SIZE_DELIMETER = ','
