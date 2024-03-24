@@ -16,6 +16,7 @@ services:
       - LOGGING_LEVEL=DEBUG
     volumes:
       - ./config/server_config.ini:/config.ini
+      - ./config/bets.csv:/bets.csv
     networks:
       - testing_net
 EOF
@@ -34,6 +35,7 @@ cat >> docker-compose-dev.yaml <<EOF
       - CLI_LOG_LEVEL=DEBUG
     volumes:
       - ./config/client_config.ini:/config.ini
+      - ./.data/agency-$i.csv:/data.csv
     networks:
       - testing_net
     depends_on:
