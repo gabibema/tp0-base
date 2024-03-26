@@ -28,9 +28,15 @@ class Server:
         logging.info("action: sigterm_received | result: initiating_shutdown")
         with self.keep_running.get_lock():
             self.keep_running.value = 0
-        self._server_socket.close()
-        for p in self._processes:
-            p.join()  
+            self._server_socket.close()
+
+            for client_sock in self._client_sockets:
+                logging.info(f'action: send_error | result: success | ip: {client_sock.getpeername()[0]}')
+                mp.send_message(client_sock, "Server shutdown", mp.MESSAGE_FLAG['ERROR'])
+                client_sock.close()
+            for p in self._processes:
+                p.join()  
+
 
     def run(self) -> bool:
         failed = False
@@ -122,7 +128,7 @@ class Server:
         with self._lock_agencies:
             self._client_sockets.append(client_sock)
 
-        while flag == mp.MESSAGE_FLAG['BET']:
+        while flag == mp.MESSAGE_FLAG['BET'] and self.keep_running.value :
             bets = bets_from_string(msg)
             logging.info(f'action: receive_message | result: success | ip: {addr[0]} | bets_received: {len(bets)}')
             mp.send_message(client_sock, f"{len(bets)}", mp.MESSAGE_FLAG['NORMAL'])
@@ -131,7 +137,7 @@ class Server:
                 store_bets(bets)
             msg, flag = mp.receive_message(client_sock)
 
-        if flag == mp.MESSAGE_FLAG['FINAL']:
+        if flag == mp.MESSAGE_FLAG['FINAL'] and self.keep_running.value:
                 logging.info(f'action: receive_message | result: success | ip: {addr[0]} | agency_waiting_raffle: {msg}')
                 with self._lock_agencies:
                     self._pending_agencies[msg] = client_sock
@@ -143,14 +149,14 @@ class Server:
         Function blocks until a connection to a client is made.
         Then connection created is printed and returned
         """
-        if not self.keep_running.value:
-            return None
-
-        try:
-            logging.info('action: accept_connections | result: in_progress')
-            c, addr = self._server_socket.accept()
-            logging.info(f'action: accept_connections | result: success | ip: {addr[0]}')
-            return c
-        except OSError as e:
-            logging.info('action: accept_connections | result: failed | error: {}'.format(e) + ' | server_keep_running: {}'.format(self.keep_running))
-            return None
+        with self.keep_running.get_lock():
+            if not self.keep_running.value:
+                return None
+            try:
+                logging.info('action: accept_connections | result: in_progress')
+                c, addr = self._server_socket.accept()
+                logging.info(f'action: accept_connections | result: success | ip: {addr[0]}')
+                return c
+            except OSError as e:
+                logging.info('action: accept_connections | result: failed | error: {}'.format(e) + ' | server_keep_running: {}'.format(self.keep_running))
+                return None
