@@ -52,9 +52,8 @@ def main():
 
     # Initialize server and start server loop
     server = Server(port, listen_backlog, time_limit)
-    server_error = server.run()
-    if not server_error:
-        server.raffle()
+    server.run()
+
 
 
 def initialize_log(logging_level):
