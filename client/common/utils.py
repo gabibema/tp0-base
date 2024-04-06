@@ -1,5 +1,6 @@
 import datetime
 import csv
+from typing import Generator
 
 """ Bets storage location. """
 STORAGE_FILEPATH = "./bets.csv"
@@ -26,7 +27,7 @@ class Bet:
 Loads the information all the bets in the STORAGE_FILEPATH file.
 Not thread-safe/process-safe.
 """
-def load_bets(agency:str) -> list[Bet]:
+def load_bets(agency:str) -> Generator[Bet, None, None]:
     with open(STORAGE_FILEPATH, 'r') as file:
         reader = csv.reader(file, quoting=csv.QUOTE_MINIMAL)
         for row in reader:

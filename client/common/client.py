@@ -3,6 +3,7 @@ import time
 import logging
 import signal
 from configparser import ConfigParser
+from typing import Generator
 from common.utils import Bet, bets_to_string, bets_from_string
 import common.message_protocol as mp
 
@@ -47,29 +48,54 @@ class Client:
         return response, flag
 
 
-    def start(self, bets: list[Bet]):
+    """
+    Send bets to the server by chunks, returning False if an error occurs.
+    """
+    def send_bets(self, bets: Generator[Bet, None, None]) -> bool:
+        chunk_size = int(self.config['batch_size'])
+        chunk = []
 
-        """Sends a bets to the server by chunks"""
-        bets = list(bets)
-        bets_split = [bets[i:i + self.config['batch_size']] for i in range(0, len(bets), self.config['batch_size'])]
-
-        self.create_client_socket()
-        if self.conn is None:
-            return
-        
-        for chunk in bets_split:
+        for bet in bets:
             if not self.keep_running:
                 return
-            
+            chunk.append(bet)
+            if len(chunk) < chunk_size:
+                continue
+
             sent_size = mp.send_message(self.conn, bets_to_string(chunk), mp.MESSAGE_FLAG['BET'])
             if sent_size is None:
-                return
+                return False
             
             logging.info(f"action: send_bets | result: success | client_id: {self.config['id']} | bets_sent: {len(chunk)} | size: {len(bets_to_string(chunk))}")
             msg, flag = self.get_server_response()
             if flag == mp.MESSAGE_FLAG['ERROR']:
                 logging.error(f"action: receive_message | result: error | client_id: {self.config['id']} | error: {msg}")
-                return
+                return False
+            
+            chunk = []
+        
+        if chunk:
+            sent_size = mp.send_message(self.conn, bets_to_string(chunk), mp.MESSAGE_FLAG['BET'])
+            if sent_size is None:
+                return False
+            
+            logging.info(f"action: send_bets | result: success | client_id: {self.config['id']} | bets_sent: {len(chunk)} | size: {len(bets_to_string(chunk))}")
+            msg, flag = self.get_server_response()
+            if flag == mp.MESSAGE_FLAG['ERROR']:
+                logging.error(f"action: receive_message | result: error | client_id: {self.config['id']} | error: {msg}")
+                return False
+        
+        return True
+            
+
+    def start(self, bets: Generator[Bet, None, None]):
+        """Sends a bets to the server by chunks"""
+        self.create_client_socket()
+        if self.conn is None:
+            return
+        
+        if not self.send_bets(bets):
+            return
         
         mp.send_message(self.conn, f"{self.config['id']}", mp.MESSAGE_FLAG['FINAL'])
         message,flag = mp.receive_message(self.conn)
