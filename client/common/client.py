@@ -60,18 +60,21 @@ class Client:
         for chunk in bets_split:
             if not self.keep_running:
                 return
-                
-            mp.send_message(self.conn, bets_to_string(chunk), mp.MESSAGE_FLAG['BET'])
+            
+            sent_size = mp.send_message(self.conn, bets_to_string(chunk), mp.MESSAGE_FLAG['BET'])
+            if sent_size is None:
+                return
+            
             logging.info(f"action: send_bets | result: success | client_id: {self.config['id']} | bets_sent: {len(chunk)} | size: {len(bets_to_string(chunk))}")
             msg, flag = self.get_server_response()
             if flag == mp.MESSAGE_FLAG['ERROR']:
-                logging.error(f"action: receive_message | result: connection_timeout | client_id: {self.config['id']} | error: {msg}")
+                logging.error(f"action: receive_message | result: error | client_id: {self.config['id']} | error: {msg}")
                 return
         
         mp.send_message(self.conn, f"{self.config['id']}", mp.MESSAGE_FLAG['FINAL'])
         message,flag = mp.receive_message(self.conn)
         if flag == mp.MESSAGE_FLAG['ERROR']:
-            logging.error(f"action: receive_message | result: connection_timeout | client_id: {self.config['id']} | error: {msg}")
+            logging.error(f"action: receive_message | result: error | client_id: {self.config['id']} | error: {msg}")
         elif flag == mp.MESSAGE_FLAG['BET']:
             bets = bets_from_string(message)
             logging.info(f"action: receive_message | result: success | client_id: {self.config['id']} | winners_amount: {len(bets)}")

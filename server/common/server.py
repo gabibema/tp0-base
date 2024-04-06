@@ -110,8 +110,9 @@ class Server:
             msg, flag = mp.receive_message(client_sock)
             addr = client_sock.getpeername()
             if flag == mp.MESSAGE_FLAG['BET']:
-                close_connection = False
-                self.__handle_raffle_connection(client_sock, msg)
+                close_connection = self.__handle_raffle_connection(client_sock, msg)
+            elif flag == mp.MESSAGE_FLAG['ERROR']:
+                logging.error(f'action: receive_message | result: error | ip: {addr[0]} | error: {msg}')
             else:
                 logging.info(f'action: receive_message | result: success | ip: {addr[0]} | msg: {msg}')
                 client_sock.send("{}\n".format(msg).encode('utf-8'), )
@@ -120,10 +121,12 @@ class Server:
         finally:
             if close_connection:
                 client_sock.close()
+        return close_connection
 
     def __handle_raffle_connection(self, client_sock, msg):
         addr = client_sock.getpeername()
         flag = mp.MESSAGE_FLAG['BET']
+        error = True
 
         with self._lock_agencies:
             self._client_sockets.append(client_sock)
@@ -131,13 +134,20 @@ class Server:
         while flag == mp.MESSAGE_FLAG['BET'] and self.keep_running.value :
             bets = bets_from_string(msg)
             logging.info(f'action: receive_message | result: success | ip: {addr[0]} | bets_received: {len(bets)}')
-            mp.send_message(client_sock, f"{len(bets)}", mp.MESSAGE_FLAG['NORMAL'])
 
             with self._lock_file:
                 store_bets(bets)
+                
+            sent = mp.send_message(client_sock, f"{len(bets)}", mp.MESSAGE_FLAG['NORMAL'])
+            if sent is None:
+                return error
+            
             msg, flag = mp.receive_message(client_sock)
 
-        if flag == mp.MESSAGE_FLAG['FINAL'] and self.keep_running.value:
+        if flag == mp.MESSAGE_FLAG['ERROR']:
+            logging.error(f'action: receive_message | result: error | ip: {addr[0]} | error: {msg}')
+            return error
+        elif flag == mp.MESSAGE_FLAG['FINAL'] and self.keep_running.value:
                 logging.info(f'action: receive_message | result: success | ip: {addr[0]} | agency_waiting_raffle: {msg}')
                 with self._lock_agencies:
                     self._pending_agencies[msg] = client_sock
