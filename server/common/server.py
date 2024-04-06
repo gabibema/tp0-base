@@ -15,7 +15,11 @@ class Server:
         self.keep_running = multiprocessing.Value('i', 1)
         self._lock_file = multiprocessing.Lock()
         self._lock_agencies = multiprocessing.Lock()
-    
+
+        self.raffle_pending_event = multiprocessing.Event()
+        self.raffle_pending_event.set()
+
+
         self._server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._server_socket.bind(('', port))
         self._server_socket.listen(listen_backlog)
@@ -48,8 +52,7 @@ class Server:
                 self._processes.append(client_process)  
 
        
-        while self.raffle_pending():
-            pass
+        self.raffle_pending_event.wait()
 
         for p in self._processes:
             p.join()
@@ -82,7 +85,7 @@ class Server:
         Function returns True if there are pending agencies to raffle
         and False otherwise
         """
-        return len(self._pending_agencies) < AGENCY_RAFFLE
+        return self.raffle_pending_event.is_set()
     
 
     def __handle_client_connection(self, client_sock):
@@ -132,6 +135,14 @@ class Server:
                 logging.info(f'action: receive_message | result: success | ip: {addr[0]} | agency_waiting_raffle: {msg}')
                 with self._lock_agencies:
                     self._pending_agencies[msg] = client_sock
+                    self.__check_raffles()
+
+
+    def __check_raffles(self):
+        if len(self._pending_agencies) == AGENCY_RAFFLE:
+            logging.info('action: raffle_pending | result: success | all agencies are ready to raffle')
+            self.raffle_pending_event.clear()
+
 
     def __accept_new_connection(self):
         """
