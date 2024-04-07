@@ -65,9 +65,12 @@ def load_bets() -> Generator[Bet, None, None]:
 def bets_from_string(bets_str: str) -> list[Bet]:
     return [Bet.from_string(bet_str) for bet_str in bets_str.split('\n') if bet_str]
 
-"""
-Converts a list of bets to a string representation.
-"""
-def bets_to_string(bets: list[Bet]) -> str:
-    return "".join([f"{bet.to_string()}\n" for bet in bets])
+
+def winners_to_string(winners: list[str]) -> str:
+    """
+    Creates a string including the document of each winner in the list with a separator ','.
+    """
+    if not len(winners):
+        return '-'
+    return ', '.join(winners)
     

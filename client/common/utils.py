@@ -40,11 +40,6 @@ def load_bets(agency:str) -> Generator[Bet, None, None]:
         for row in reader:
             yield Bet(agency,row[0], row[1], row[2], row[3], row[4])
 
-
-def bets_from_string(bets_str: str) -> list[Bet]:
-    return [Bet.from_string(bet_str) for bet_str in bets_str.split('\n') if bet_str]
-
-
 """
 Converts a list of bets to a string representation.
 """

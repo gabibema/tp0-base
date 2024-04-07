@@ -3,7 +3,7 @@ import logging
 import signal
 from configparser import ConfigParser
 from typing import Generator
-from common.utils import Bet, bets_to_string, bets_from_string
+from common.utils import Bet, bets_to_string, winners_from_string
 import common.message_protocol as mp
 
 class Client:
@@ -48,9 +48,8 @@ class Client:
             logging.error(f"action: receive_message | result: error | client_id: {self.config['id']} | error: {message}")
             raise SystemError
         
-        elif flag == mp.MESSAGE_FLAG['BET']:
-            bets = bets_from_string(message)
-            logging.info(f"action: receive_message | result: success | client_id: {self.config['id']} | winners_amount: {len(bets)}")
+        elif flag == mp.MESSAGE_FLAG['NORMAL']:
+            logging.info(f"action: receive_message | result: success | client_id: {self.config['id']} | winners: {message}")
 
     def send_chunk(self, chunk: list[Bet]):
         """

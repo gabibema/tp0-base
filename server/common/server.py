@@ -3,7 +3,7 @@ import socket
 import logging
 import signal
 from datetime import datetime, timedelta
-from common.utils import Bet, store_bets, bets_from_string, load_bets, has_won, bets_to_string
+from common.utils import Bet, store_bets, bets_from_string, load_bets, has_won, winners_to_string
 import common.message_protocol as mp
 
 AGENCY_RAFFLE = 5
@@ -67,16 +67,17 @@ class Server:
 
         for bet in bets:
             if has_won(bet):
-                winners[str(bet.agency)].append(bet)
+                winners[str(bet.agency)].append(bet.document)
 
         for agency in winners.keys():
-            logging.info(f'action: raffle | result: success | agency: {agency} | winners: {len(winners[agency])}')
             client_sock = self._pending_agencies[agency]
-
-            send = mp.send_message(client_sock, bets_to_string(winners[agency]), mp.MESSAGE_FLAG['BET'])
+            send = mp.send_message(client_sock, winners_to_string(winners[agency]), mp.MESSAGE_FLAG['NORMAL'])
             if send is None:
                 logging.error(f'action: raffle | result: error | agency: {agency} | error: sending message')
                 continue
+            else:
+                logging.info(f'action: raffle | result: success | agency: {agency} | winners: {len(winners[agency])}')
+
 
     def __join_processes(self):
         """
