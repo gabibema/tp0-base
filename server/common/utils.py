@@ -26,10 +26,18 @@ class Bet:
     
     def to_string(self):
         return f"{self.agency},{self.first_name},{self.last_name},{self.document},{self.birthdate},{self.number}"
+    
+    
+    @staticmethod
+    def from_string(bet_str: str):
+        agency, first_name, last_name, document, birthdate, number = bet_str.split(',')
+        return Bet(agency, first_name, last_name, document, birthdate, number)
+
 
 """ Checks whether a bet won the prize or not. """
 def has_won(bet: Bet) -> bool:
     return bet.number == LOTTERY_WINNER_NUMBER
+
 
 """
 Persist the information of each bet in the STORAGE_FILEPATH file.
@@ -42,6 +50,7 @@ def store_bets(bets: list[Bet]) -> None:
             writer.writerow([bet.agency, bet.first_name, bet.last_name,
                              bet.document, bet.birthdate, bet.number])
 
+
 """
 Loads the information all the bets in the STORAGE_FILEPATH file.
 Not thread-safe/process-safe.
@@ -53,12 +62,8 @@ def load_bets() -> Generator[Bet, None, None]:
             yield Bet(row[0], row[1], row[2], row[3], row[4], row[5])
 
 
-def bet_from_string(bet_str: str) -> Bet:
-    agency, first_name, last_name, document, birthdate, number = bet_str.split(',')
-    return Bet(agency, first_name, last_name, document, birthdate, number)
-
 def bets_from_string(bets_str: str) -> list[Bet]:
-    return [bet_from_string(bet_str) for bet_str in bets_str.split('\n') if bet_str]
+    return [Bet.from_string(bet_str) for bet_str in bets_str.split('\n') if bet_str]
 
 """
 Converts a list of bets to a string representation.

@@ -19,8 +19,15 @@ class Bet:
         self.birthdate = datetime.date.fromisoformat(birthdate)
         self.number = int(number)
     
+
     def to_string(self):
         return f"{self.agency},{self.first_name},{self.last_name},{self.document},{self.birthdate},{self.number}"
+
+
+    @staticmethod
+    def from_string(bet_str: str):
+        agency, first_name, last_name, document, birthdate, number = bet_str.split(',')
+        return Bet(agency, first_name, last_name, document, birthdate, number)
 
 
 """
@@ -33,12 +40,9 @@ def load_bets(agency:str) -> Generator[Bet, None, None]:
         for row in reader:
             yield Bet(agency,row[0], row[1], row[2], row[3], row[4])
 
-def bet_from_string(bet_str: str) -> Bet:
-    agency, first_name, last_name, document, birthdate, number = bet_str.split(',')
-    return Bet(agency, first_name, last_name, document, birthdate, number)
 
 def bets_from_string(bets_str: str) -> list[Bet]:
-    return [bet_from_string(bet_str) for bet_str in bets_str.split('\n') if bet_str]
+    return [Bet.from_string(bet_str) for bet_str in bets_str.split('\n') if bet_str]
 
 
 """
