@@ -1,5 +1,4 @@
 import socket
-import time
 import logging
 import signal
 from configparser import ConfigParser
@@ -11,18 +10,20 @@ class Client:
     def __init__(self, config):
         self.config = config
         self.conn = None
-        self.keep_running = True  # This variable will be used to control the main loop
         signal.signal(signal.SIGTERM, self.handle_sigterm)
 
     def handle_sigterm(self, signum, frame):
         """Handler for the SIGTERM signal. It will be called when the process receives the signal."""
         logging.info(f"action: sigterm_received | result: initiating_shutdown | client_id: {self.config['id']}")
-        self.keep_running = False  # Changes the value of the variable to False, so the client will stop.
+        raise SystemExit
 
     
     def make_bet(self, bet: Bet):
         """Sends a bet to the server."""
-        mp.send_message(self.conn, bet.to_string(), mp.MESSAGE_FLAG['BET'])
+        sent = mp.send_message(self.conn, bet.to_string(), mp.MESSAGE_FLAG['BET'])
+        if sent is None:
+            raise SystemError
+        
         logging.info(f"action: send_bet | result: success | client_id: {self.config['id']} | bet: {bet.to_string()}")
 
     def create_client_socket(self):
@@ -30,23 +31,42 @@ class Client:
         try:
             host, port_str = self.config['server_address'].split(':')
             port = int(port_str)
-
             self.conn = socket.create_connection((host, port))
+            
         except Exception as e:
             logging.fatal(f"action: connect | result: fail | client_id: {self.config['id']} | error: {e}")
+            raise SystemError
 
-    def get_server_response(self):
-        """
-        Receives the server response
-        """
-        try:
-            response, flag = mp.receive_message(self.conn)
-            logging.info(f"action: receive_message | result: success | client_id: {self.config['id']} | server_bets_received: {response.strip()}")
-        except Exception as e:
-            logging.error(f"action: receive_message | result: fail | client_id: {self.config['id']} | error: {e}")
-            return None, None
-        return response, flag
 
+    def send_final_message(self):
+        """
+        Sends the final message to the server
+        """
+        mp.send_message(self.conn, f"{self.config['id']}", mp.MESSAGE_FLAG['FINAL'])
+        message, flag = mp.receive_message(self.conn)
+        if flag == mp.MESSAGE_FLAG['ERROR']:
+            logging.error(f"action: receive_message | result: error | client_id: {self.config['id']} | error: {message}")
+            raise SystemError
+        
+        elif flag == mp.MESSAGE_FLAG['BET']:
+            bets = bets_from_string(message)
+            logging.info(f"action: receive_message | result: success | client_id: {self.config['id']} | winners_amount: {len(bets)}")
+
+    def send_chunk(self, chunk: list[Bet]):
+        """
+        Sends a chunk of bets to the server
+        """
+        sent_size = mp.send_message(self.conn, bets_to_string(chunk), mp.MESSAGE_FLAG['BET'])
+        if sent_size is None:
+            raise SystemError
+        
+        logging.info(f"action: send_bets | result: success | client_id: {self.config['id']} | bets_sent: {len(chunk)} | size: {len(bets_to_string(chunk))}")
+        msg, flag = mp.receive_message(self.conn)
+        if flag == mp.MESSAGE_FLAG['ERROR']:
+            logging.error(f"action: receive_message | result: error | client_id: {self.config['id']} | error: {msg}")
+            raise SystemError
+        else:
+            logging.info(f"action: receive_message | result: success | client_id: {self.config['id']} | bets_received: {msg}")
 
     """
     Send bets to the server by chunks, returning False if an error occurs.
@@ -56,55 +76,36 @@ class Client:
         chunk = []
 
         for bet in bets:
-            if not self.keep_running:
-                return
             chunk.append(bet)
             if len(chunk) < chunk_size:
                 continue
 
-            sent_size = mp.send_message(self.conn, bets_to_string(chunk), mp.MESSAGE_FLAG['BET'])
-            if sent_size is None:
-                return False
-            
-            logging.info(f"action: send_bets | result: success | client_id: {self.config['id']} | bets_sent: {len(chunk)} | size: {len(bets_to_string(chunk))}")
-            msg, flag = self.get_server_response()
-            if flag == mp.MESSAGE_FLAG['ERROR']:
-                logging.error(f"action: receive_message | result: error | client_id: {self.config['id']} | error: {msg}")
-                return False
-            
+            self.send_chunk(chunk)
             chunk = []
         
         if chunk:
-            sent_size = mp.send_message(self.conn, bets_to_string(chunk), mp.MESSAGE_FLAG['BET'])
-            if sent_size is None:
-                return False
-            
-            logging.info(f"action: send_bets | result: success | client_id: {self.config['id']} | bets_sent: {len(chunk)} | size: {len(bets_to_string(chunk))}")
-            msg, flag = self.get_server_response()
-            if flag == mp.MESSAGE_FLAG['ERROR']:
-                logging.error(f"action: receive_message | result: error | client_id: {self.config['id']} | error: {msg}")
-                return False
-        
-        return True
+            self.send_chunk(chunk)
             
 
     def start(self, bets: Generator[Bet, None, None]):
         """Sends a bets to the server by chunks"""
-        self.create_client_socket()
-        if self.conn is None:
-            return
         
-        if not self.send_bets(bets):
-            return
+        try: 
+            self.create_client_socket()
+            if self.conn is None:
+                raise SystemError
+            
+            self.send_bets(bets)
+            self.send_final_message()
+
+        except SystemError:
+            logging.fatal(f"action: client_error | client_id: {self.config['id']}")
         
-        mp.send_message(self.conn, f"{self.config['id']}", mp.MESSAGE_FLAG['FINAL'])
-        message,flag = mp.receive_message(self.conn)
-        if flag == mp.MESSAGE_FLAG['ERROR']:
-            logging.error(f"action: receive_message | result: error | client_id: {self.config['id']} | error: {msg}")
-        elif flag == mp.MESSAGE_FLAG['BET']:
-            bets = bets_from_string(message)
-            logging.info(f"action: receive_message | result: success | client_id: {self.config['id']} | winners_amount: {len(bets)}")
+        except SystemExit:
+            logging.info(f"action: client_shutdown | client_id: {self.config['id']}")
         
+        finally:
+            self.close()
 
 
     
@@ -112,8 +113,8 @@ class Client:
         """
         Closes the client
         """
+        logging.info(f"action: client_closed | client_id: {self.config['id']}")
         if self.conn is None:
             return
-        logging.info(f"action: client_closed | client_id: {self.config['id']}")
         self.conn.close()
         

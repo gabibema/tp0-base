@@ -28,12 +28,15 @@ class Server:
         raise SystemExit
 
 
-    def run(self) -> bool:
+    def run(self):
         try: 
             self.__handle_connections()
             self.raffle_pending_event.wait()
             self.__join_processes()
             self.__raffle()
+
+        except SystemError:
+            logging.error('action: run | result: error | message: system error')
 
         except SystemExit:
             logging.info('action: run | result: success | message: received SIGTERM signal')
@@ -69,7 +72,11 @@ class Server:
         for agency in winners.keys():
             logging.info(f'action: raffle | result: success | agency: {agency} | winners: {len(winners[agency])}')
             client_sock = self._pending_agencies[agency]
-            mp.send_message(client_sock, bets_to_string(winners[agency]), mp.MESSAGE_FLAG['BET'])
+
+            send = mp.send_message(client_sock, bets_to_string(winners[agency]), mp.MESSAGE_FLAG['BET'])
+            if send is None:
+                logging.error(f'action: raffle | result: error | agency: {agency} | error: sending message')
+                continue
 
     def __join_processes(self):
         """
@@ -95,29 +102,21 @@ class Server:
                 process.join()
 
     def __handle_client_connection(self, client_sock):
-        close_connection = True
         try:
             msg, flag = mp.receive_message(client_sock)
             addr = client_sock.getpeername()
             if flag == mp.MESSAGE_FLAG['BET']:
-                close_connection = self.__handle_raffle_connection(client_sock, msg)
-            elif flag == mp.MESSAGE_FLAG['ERROR']:
-                logging.error(f'action: receive_message | result: error | ip: {addr[0]} | error: {msg}')
+                self.__handle_raffle_connection(client_sock, msg)
             else:
-                logging.info(f'action: receive_message | result: success | ip: {addr[0]} | msg: {msg}')
-                client_sock.send("{}\n".format(msg).encode('utf-8'), )
+                logging.error(f'action: receive_message | result: error | ip: {addr[0]} | error: invalid message flag')
         except OSError as e:
             logging.error("action: receive_message | result: fail | error: {e}")
-        finally:
-            if close_connection:
-                client_sock.close()
-        return close_connection
+
 
 
     def __handle_raffle_connection(self, client_sock, msg):
         addr = client_sock.getpeername()
         flag = mp.MESSAGE_FLAG['BET']
-        error = True
 
         self._client_sockets.append(client_sock)
 
@@ -130,16 +129,16 @@ class Server:
                 
             sent = mp.send_message(client_sock, f"{len(bets)}", mp.MESSAGE_FLAG['NORMAL'])
             if sent is None:
-                return error
+                raise SystemError
             
-            msg, flag = mp.receive_message(client_sock)
+            msg, flag = mp.receive_message(client_sock) #if flag is ERROR, SystemError is raised after the loop
 
         if flag == mp.MESSAGE_FLAG['ERROR']:
             logging.error(f'action: receive_message | result: error | ip: {addr[0]} | error: {msg}')
-            return error
+            raise SystemError
         elif flag == mp.MESSAGE_FLAG['FINAL']:
-                logging.info(f'action: receive_message | result: success | ip: {addr[0]} | agency_waiting_raffle: {msg}')
-                self.__add_pending_agency(msg, client_sock)
+            logging.info(f'action: receive_message | result: success | ip: {addr[0]} | agency_waiting_raffle: {msg}')
+            self.__add_pending_agency(msg, client_sock)
 
 
     def __add_pending_agency(self, agency, client_sock):

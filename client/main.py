@@ -40,7 +40,6 @@ def main():
     client = Client(config)
     bets = load_bets(config['id'])
     client.start(bets)
-    client.close()
-
+    
 if __name__ == "__main__":
     main()
