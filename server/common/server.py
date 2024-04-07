@@ -9,12 +9,10 @@ import common.message_protocol as mp
 AGENCY_RAFFLE = 5
 
 class Server:
-    def __init__(self, port, listen_backlog, time_limit):
+    def __init__(self, port, listen_backlog):
         self._pending_agencies = multiprocessing.Manager().dict()
         self._client_sockets = multiprocessing.Manager().list()
-        self.keep_running = multiprocessing.Value('i', 1)
         self._lock_file = multiprocessing.Lock()
-        self._lock_agencies = multiprocessing.Lock()
 
         self.raffle_pending_event = multiprocessing.Event()
         self.raffle_pending_event.set()
@@ -61,9 +59,8 @@ class Server:
         Function raffles agencies that are pending to be raffled
         """
         bets = load_bets()
-        with self._lock_agencies:
-            winners = {agency: [] for agency in self._pending_agencies.keys()}
-            logging.info(f'action: raffle | result: success | agencies: {len(self._pending_agencies)}')
+        winners = {agency: [] for agency in self._pending_agencies.keys()}
+        logging.info(f'action: raffle | result: success | agencies: {len(self._pending_agencies)}')
 
         for bet in bets:
             if has_won(bet):
@@ -122,8 +119,7 @@ class Server:
         flag = mp.MESSAGE_FLAG['BET']
         error = True
 
-        with self._lock_agencies:
-            self._client_sockets.append(client_sock)
+        self._client_sockets.append(client_sock)
 
         while flag == mp.MESSAGE_FLAG['BET']:
             bets = bets_from_string(msg)
@@ -147,19 +143,17 @@ class Server:
 
 
     def __add_pending_agency(self, agency, client_sock):
-        with self._lock_agencies:
-            self._pending_agencies[agency] = client_sock
-            logging.info(f'action: add_pending_agency | result: success | agency: {agency}')
+        self._pending_agencies[agency] = client_sock
+        logging.info(f'action: add_pending_agency | result: success | agency: {agency}')
         
         self.__check_raffles()
 
     def __check_raffles(self):
-        with self._lock_agencies:
-            if len(self._pending_agencies.keys()) != AGENCY_RAFFLE:
-                return
-    
-            logging.info('action: raffle_pending | result: success | all agencies are ready to raffle')
-            self.raffle_pending_event.clear()
+        if len(self._pending_agencies.keys()) != AGENCY_RAFFLE:
+            return
+
+        logging.info('action: raffle_pending | result: success | all agencies are ready to raffle')
+        self.raffle_pending_event.clear()
 
 
     def __accept_new_connection(self):
