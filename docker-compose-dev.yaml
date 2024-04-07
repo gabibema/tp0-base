@@ -11,6 +11,7 @@ services:
     volumes:
       - ./config/server_config.ini:/config.ini
       - ./config/bets.csv:/bets.csv
+      - ./layer/message_protocol.py:/common/message_protocol.py
     networks:
       - testing_net
 
@@ -24,6 +25,7 @@ services:
     volumes:
       - ./config/client_config.ini:/config.ini
       - ./.data/agency-1.csv:/bets.csv
+      - ./layer/message_protocol.py:/common/message_protocol.py
     networks:
       - testing_net
     depends_on:
@@ -39,6 +41,7 @@ services:
     volumes:
       - ./config/client_config.ini:/config.ini
       - ./.data/agency-2.csv:/bets.csv
+      - ./layer/message_protocol.py:/common/message_protocol.py
     networks:
       - testing_net
     depends_on:
@@ -54,6 +57,7 @@ services:
     volumes:
       - ./config/client_config.ini:/config.ini
       - ./.data/agency-3.csv:/bets.csv
+      - ./layer/message_protocol.py:/common/message_protocol.py
     networks:
       - testing_net
     depends_on:
@@ -69,6 +73,7 @@ services:
     volumes:
       - ./config/client_config.ini:/config.ini
       - ./.data/agency-4.csv:/bets.csv
+      - ./layer/message_protocol.py:/common/message_protocol.py
     networks:
       - testing_net
     depends_on:
@@ -84,6 +89,7 @@ services:
     volumes:
       - ./config/client_config.ini:/config.ini
       - ./.data/agency-5.csv:/bets.csv
+      - ./layer/message_protocol.py:/common/message_protocol.py
     networks:
       - testing_net
     depends_on:

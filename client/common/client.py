@@ -3,7 +3,7 @@ import logging
 import signal
 from configparser import ConfigParser
 from typing import Generator
-from common.utils import Bet, bets_to_string, winners_from_string
+from common.utils import Bet, bets_to_string
 import common.message_protocol as mp
 
 class Client:

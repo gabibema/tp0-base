@@ -17,6 +17,7 @@ services:
     volumes:
       - ./config/server_config.ini:/config.ini
       - ./config/bets.csv:/bets.csv
+      - ./layer/message_protocol.py:/common/message_protocol.py
     networks:
       - testing_net
 EOF
@@ -36,6 +37,7 @@ cat >> docker-compose-dev.yaml <<EOF
     volumes:
       - ./config/client_config.ini:/config.ini
       - ./.data/agency-$i.csv:/bets.csv
+      - ./layer/message_protocol.py:/common/message_protocol.py
     networks:
       - testing_net
     depends_on:
