@@ -86,6 +86,9 @@ Se deberá implementar un módulo de comunicación entre el cliente y el servido
 ### Resolución:
 * Añadida la capa de comunicación entre cliente y servidor.
 * La estructura del mensaje: |tamaño|mensaje, donde 'tamaño' facilita la lectura de mensajes y la manipulación de errores.
+* Los mensajes enviados durant la comunicación utilizan como delimitador el carácter '|' para el incio y fin del header, dicho carácter sólo se lee para detectar el header (en caso de que aparezca durante una lectura de header dentro del mensaje, no se lo tendrá en cuenta). No se soporta los mensajes que no envíen dicho header con el formato solicitado incluyendo los delimitadore.
+* Dada la estructura de los mensajes que se leen en los archivos, se eligió el delimitador '|' al no incluirse en dicho formato (agencia,nombre,apellido,documento,numero), de esta forma se busca minimizar los casos en los que la lectura sea inválida debido al delimitador.
+* A su vez se proveen mecanismos para asegurar que los mensajes se envíen completos (tanto del lado del cliente como del servidor) verificando los bytes que efectivamente se comunicaron contra los que se deberían enviar, y enviando los restantes. Del mismo modo se verifica durante la lectura si el tamaño leído coincide con el incluido en el header, caso contrario continúa solicitando al socket los bytes restantes.
 
 ---------------
 
@@ -98,6 +101,10 @@ Los _batchs_ permiten que el cliente registre varias apuestas en una misma consu
 * Modificación del protocolo de mensaje al formato: |tamaño,flag|mensaje, donde 'tamaño' es la longitud del mensaje y 'flag' es el tipo de mensaje enviado.
 * Se agregaron volúmenes de Docker para los datos específicos de la agencia y el almacenamiento de apuestas en el servidor.
 * Los flags que se utilizaron fueron 'NORMAL', 'NON_PROTOCOL' y 'BET', siendo este último el enviado cuando el cliente carga apuestas al servidor.
+* Para la lectura del header, se utiliza una lectura por chunks (configurado de a 16 bytes) hasta que pueda leer el header completo (encuentre dos caráctere delimitadores), posteriormente se procesa el conenido interno utilizando el separador entre el tamaño y el flag ','. Dicho formato es obligatorio para el funcionamiento del protocolo de mensajes.
+* Por ejemplo se propone el siguiente mensaje:
+    mensaje = "|3,0|bar"
+    En este caso 3 hace referencia al tamaño del mensaje en bytes ("bar"), 0 es el opcode correspondiente a un mensaje 'NORMAL' y al momento de leer el header, como el chunk size incluye el mensaje, se leerá todo en un sólo buffer del socket (incluyendo el cuerpo del mensaje). Para casos en los que el chunk inicial lee parte del mensaje, se retorna en la función y se calcula la diferencia entre lo leído y el tamaño original del mensaje.
 ----------------
 ### Ejercicio N°7:
 Modificar los clientes para que notifiquen al servidor al finalizar con el envío de todas las apuestas y así proceder con el sorteo.
@@ -112,7 +119,8 @@ Las funciones `load_bets(...)` y `has_won(...)` son provistas por la cátedra y 
 * Se implementó la función de sorteo para las agencias en el servidor.
 * Como mecanismo para transmitir que todas las apuestas fueron cargadas, se envía un mensaje con flag 'FINAL' y el cuerpo contiene el id de la agencia que lo envía. 
 * El servidor espera el mensaje de todas las agencias participantes antes de continuar.
-* Se hace el envío de los resultados del sorteo a cada agencia a través de sus respectivos sockets, comunicando únicamente los ganadores de la agencia correspondiente.
+* Se hace el envío de los resultados del sorteo a cada agencia a través de sus respectivos sockets, comunicando únicamente los ganadores de la agencia correspondiente. En caso de que la agencia no registre ganadores se envía un mensaje de '-', indicando que está vacío. Caso contrario, se envía una lista de ganadores separados por ','.
+* Por ejemplo: "11111, 22222, 33333", representando cada uno el documento de los ganadores de dicha agencia correspondiente.
 
 ------------
 
@@ -127,100 +135,77 @@ En caso de que el alumno implemente el servidor Python utilizando _multithreadin
 
 ### Resolución:
 * Procesamiento de conexiones en paralelo en el servidor mediante el módulo multiprocessing.
-* Implementación de un sistema de bloqueo para garantizar un acceso seguro y sincronizado a los recursos compartidos, especialmente al archivo bets.csv dado que puede accederse al cargar las apuestas en cada conexión paralela.
-----------
-### Extra:
-* Se agregó el manejo de un timeout para la terminación temprana / inesperada del cliente.
-* El servidor envía un mensaje de error a los clientes restantes en caso de que alguno no responda luego de un periodo configurable(en el archivo del volume del servidor) de tiempo, permitiendo su cierre adecuado y la terminación del servidor.
-* También se enviará un mensaje con flag error en el caso del sigterm por parte del servidor, esto permite que los clientes puedan desconectarse y no seguir intentando comunicarse con un servidor que pronto finalizará su ejecución.
-* Esto permite mejorar la robustez de la comunicación cliente-servidor, garantizando una mejor finalización de procesos bajo condiciones inesperadas.
+* Implementación de un sistema de bloqueo para garantizar un acceso seguro y sincronizado a los recursos compartidos, especialmente al archivo bets.csv dado que puede accederse al cargar las apuestas en cada conexión paralela, para dicho caso se utilizó un lock que se toma por cada batch de apuestas que se envíe al servidor de modo que si el servidor recibe por ejemplo 10 apuestas, se toma el lock en el process que representa dicha conexión hasta que se escriban las 10 apuestas en el archivo, y se libera posteriormente. De este modo se evita las lecturas sucias asociadas al uso concurrente del archivo.
+* Además, se utiliza un proxy a un diccionario (estructura de datos provista por la librería), en la cual se ingresa cada agencia que terminó su carga de apuestas cuando envía su mensaje de final, dicho mecanismo es necesario para evitar errores en el caso de que varias agencias envíen su mensaje de FIN al mismo tiempo y se procesen simultáneamente.
+* Por último, el thread principal del servidor emplea un mecanismo de espera mediante eventos de la librería multiprocessing, con el mismo se evita utilizar tiempo del cpu mientras espera que todas las agencias envíen sus apuestas y el mensaje FIN, permitiendo un mejor uso de los recursos. 
+
 
 ----------
 ### Logs:
 Caso de ejecución correcta:
 * Servidor:
 ```
-2024-03-25 20:40:11 2024-03-25 23:40:11 DEBUG    action: config | result: success | port: 12345 | listen_backlog: 5 | logging_level: DEBUG | time_limit: 10
-2024-03-25 20:40:11 2024-03-25 23:40:11 INFO     action: accept_connections | result: in_progress
-2024-03-25 20:40:14 2024-03-25 23:40:14 INFO     action: accept_connections | result: success | ip: 172.25.125.3
-2024-03-25 20:40:14 2024-03-25 23:40:14 INFO     action: accept_connections | result: in_progress
-2024-03-25 20:40:14 2024-03-25 23:40:14 INFO     action: receive_message | result: success | ip: 172.25.125.3 | bets_received: 200
+2024-04-07 22:50:34 2024-04-08 01:50:34 DEBUG    action: config | result: success | port: 12345 | listen_backlog: 5 | logging_level: DEBUG | 
+2024-04-07 22:50:34 2024-04-08 01:50:34 INFO     action: accept_connections | result: in_progress
+2024-04-07 22:50:37 2024-04-08 01:50:37 INFO     action: accept_connections | result: success | ip: 172.25.125.3
+2024-04-07 22:50:37 2024-04-08 01:50:37 INFO     action: accept_connections | result: in_progress
+2024-04-07 22:50:37 2024-04-08 01:50:37 INFO     action: accept_connections | result: success | ip: 172.25.125.4
+2024-04-07 22:50:37 2024-04-08 01:50:37 INFO     action: accept_connections | result: in_progress
+2024-04-07 22:50:37 2024-04-08 01:50:37 INFO     action: receive_message | result: success | ip: 172.25.125.3 | bets_received: 2000
+2024-04-07 22:50:37 2024-04-08 01:50:37 INFO     action: accept_connections | result: success | ip: 172.25.125.5
+2024-04-07 22:50:37 2024-04-08 01:50:37 INFO     action: accept_connections | result: in_progress
+2024-04-07 22:50:37 2024-04-08 01:50:37 INFO     action: receive_message | result: success | ip: 172.25.125.5 | bets_received: 2000
 ...
-2024-03-25 20:40:14 2024-03-25 23:40:14 INFO     action: receive_message | result: success | ip: 172.25.125.3 | bets_received: 191
-2024-03-25 20:40:14 2024-03-25 23:40:14 INFO     action: receive_message | result: success | ip: 172.25.125.3 | agency_waiting_raffle: 5
-2024-03-25 20:40:14 2024-03-25 23:40:14 INFO     action: accept_connections | result: success | ip: 172.25.125.4
-2024-03-25 20:40:14 2024-03-25 23:40:14 INFO     action: accept_connections | result: in_progress
-2024-03-25 20:40:14 2024-03-25 23:40:14 INFO     action: receive_message | result: success | ip: 172.25.125.4 | bets_received: 200
+2024-04-07 22:50:38 2024-04-08 01:50:38 INFO     action: receive_message | result: success | ip: 172.25.125.3 | bets_received: 1518
+2024-04-07 22:50:38 2024-04-08 01:50:38 INFO     action: receive_message | result: success | ip: 172.25.125.3 | agency_waiting_raffle: 2
+2024-04-07 22:50:38 2024-04-08 01:50:38 INFO     action: add_pending_agency | result: success | agency: 2
+2024-04-07 22:50:38 2024-04-08 01:50:38 INFO     action: receive_message | result: success | ip: 172.25.125.5 | bets_received: 2000
+2024-04-07 22:50:38 2024-04-08 01:50:38 INFO     action: receive_message | result: success | ip: 172.25.125.5 | bets_received: 936
+2024-04-07 22:50:38 2024-04-08 01:50:38 INFO     action: receive_message | result: success | ip: 172.25.125.5 | agency_waiting_raffle: 1
+2024-04-07 22:50:38 2024-04-08 01:50:38 INFO     action: add_pending_agency | result: success | agency: 1
 ...
-2024-03-25 20:40:14 2024-03-25 23:40:14 INFO     action: receive_message | result: success | ip: 172.25.125.4 | bets_received: 118
-2024-03-25 20:40:14 2024-03-25 23:40:14 INFO     action: receive_message | result: success | ip: 172.25.125.4 | agency_waiting_raffle: 2
-2024-03-25 20:40:16 2024-03-25 23:40:16 INFO     action: accept_connections | result: success | ip: 172.25.125.6
-2024-03-25 20:40:16 2024-03-25 23:40:16 INFO     action: accept_connections | result: in_progress
-2024-03-25 20:40:16 2024-03-25 23:40:16 INFO     action: receive_message | result: success | ip: 172.25.125.6 | bets_received: 200
+2024-04-07 22:50:38 2024-04-08 01:50:38 INFO     action: receive_message | result: success | ip: 172.25.125.4 | bets_received: 2000
+2024-04-07 22:50:38 2024-04-08 01:50:38 INFO     action: accept_connections | result: success | ip: 172.25.125.6
+2024-04-07 22:50:38 2024-04-08 01:50:38 INFO     action: accept_connections | result: in_progress
+2024-04-07 22:50:38 2024-04-08 01:50:38 INFO     action: receive_message | result: success | ip: 172.25.125.4 | bets_received: 1238
+2024-04-07 22:50:38 2024-04-08 01:50:38 INFO     action: receive_message | result: success | ip: 172.25.125.4 | agency_waiting_raffle: 4
+2024-04-07 22:50:38 2024-04-08 01:50:38 INFO     action: add_pending_agency | result: success | agency: 4
+2024-04-07 22:50:38 2024-04-08 01:50:38 INFO     action: receive_message | result: success | ip: 172.25.125.6 | bets_received: 2000
 ...
-2024-03-25 20:40:16 2024-03-25 23:40:16 INFO     action: receive_message | result: success | ip: 172.25.125.6 | bets_received: 38
-2024-03-25 20:40:16 2024-03-25 23:40:16 INFO     action: receive_message | result: success | ip: 172.25.125.6 | agency_waiting_raffle: 4
-2024-03-25 20:40:16 2024-03-25 23:40:16 INFO     action: accept_connections | result: success | ip: 172.25.125.5
-2024-03-25 20:40:16 2024-03-25 23:40:16 INFO     action: accept_connections | result: in_progress
-....
-2024-03-25 20:40:17 2024-03-25 23:40:17 INFO     action: accept_connections | result: success | ip: 172.25.125.7
-2024-03-25 20:40:17 2024-03-25 23:40:17 INFO     action: receive_message | result: success | ip: 172.25.125.7 | bets_received: 200
-...
-2024-03-25 20:40:17 2024-03-25 23:40:17 INFO     action: receive_message | result: success | ip: 172.25.125.5 | bets_received: 14
-2024-03-25 20:40:17 2024-03-25 23:40:17 INFO     action: receive_message | result: success | ip: 172.25.125.7 | bets_received: 200
-2024-03-25 20:40:17 2024-03-25 23:40:17 INFO     action: receive_message | result: success | ip: 172.25.125.5 | agency_waiting_raffle: 3
-2024-03-25 20:40:17 2024-03-25 23:40:17 INFO     action: receive_message | result: success | ip: 172.25.125.7 | bets_received: 200
-...
-2024-03-25 20:40:17 2024-03-25 23:40:17 INFO     action: receive_message | result: success | ip: 172.25.125.7 | bets_received: 136
-2024-03-25 20:40:17 2024-03-25 23:40:17 INFO     action: receive_message | result: success | ip: 172.25.125.7 | agency_waiting_raffle: 1
-2024-03-25 20:40:18 2024-03-25 23:40:18 INFO     action: raffle | result: success | agency: 5 | winners: 0
-2024-03-25 20:40:18 2024-03-25 23:40:18 INFO     action: raffle | result: success | agency: 2 | winners: 6
-2024-03-25 20:40:18 2024-03-25 23:40:18 INFO     action: raffle | result: success | agency: 4 | winners: 2
-2024-03-25 20:40:18 2024-03-25 23:40:18 INFO     action: raffle | result: success | agency: 3 | winners: 6
-2024-03-25 20:40:18 2024-03-25 23:40:18 INFO     action: raffle | result: success | agency: 1 | winners: 5
+2024-04-07 22:50:38 2024-04-08 01:50:38 INFO     action: receive_message | result: success | ip: 172.25.125.6 | bets_received: 2000
+2024-04-07 22:50:38 2024-04-08 01:50:38 INFO     action: accept_connections | result: success | ip: 172.25.125.7
+2024-04-07 22:50:39 2024-04-08 01:50:39 INFO     action: receive_message | result: success | ip: 172.25.125.7 | bets_received: 991
+2024-04-07 22:50:39 2024-04-08 01:50:39 INFO     action: receive_message | result: success | ip: 172.25.125.6 | bets_received: 14
+2024-04-07 22:50:39 2024-04-08 01:50:39 INFO     action: receive_message | result: success | ip: 172.25.125.7 | agency_waiting_raffle: 5
+2024-04-07 22:50:39 2024-04-08 01:50:39 INFO     action: receive_message | result: success | ip: 172.25.125.6 | agency_waiting_raffle: 3
+2024-04-07 22:50:39 2024-04-08 01:50:39 INFO     action: add_pending_agency | result: success | agency: 5
+2024-04-07 22:50:39 2024-04-08 01:50:39 INFO     action: add_pending_agency | result: success | agency: 3
+2024-04-07 22:50:39 2024-04-08 01:50:39 INFO     action: raffle_pending | result: success | all agencies are ready to raffle
+2024-04-07 22:50:39 2024-04-08 01:50:39 INFO     action: raffle | result: success | agencies: 5
+2024-04-07 22:50:39 2024-04-08 01:50:39 INFO     action: raffle | result: success | agency: 2 | winners: 6
+2024-04-07 22:50:39 2024-04-08 01:50:39 INFO     action: raffle | result: success | agency: 1 | winners: 5
+2024-04-07 22:50:39 2024-04-08 01:50:39 INFO     action: raffle | result: success | agency: 4 | winners: 2
+2024-04-07 22:50:39 2024-04-08 01:50:39 INFO     action: raffle | result: success | agency: 5 | winners: 0
+2024-04-07 22:50:39 2024-04-08 01:50:39 INFO     action: raffle | result: success | agency: 3 | winners: 3
+2024-04-07 22:50:40 2024-04-08 01:50:40 INFO     action: run | result: success | message: server closed
 ```
 * Cliente 5 no tiene ganadores:
 ```
-2024-03-25 20:40:14 2024-03-25 23:40:14 - INFO - action: config | result: success | client_id: 5 | server_address: server:12345 | loop_lapse: 20.0 | loop_period: 5.0 | log_level: DEBUG
-2024-03-25 20:40:14 2024-03-25 23:40:14 - INFO - action: send_bets | result: success | client_id: 5 | bets_sent: 200 | size: 8944
-2024-03-25 20:40:14 2024-03-25 23:40:14 - INFO - action: receive_message | result: success | client_id: 5 | server_bets_received: 200
-...
-2024-03-25 20:40:14 2024-03-25 23:40:14 - INFO - action: receive_message | result: success | client_id: 5 | server_bets_received: 191
-2024-03-25 20:40:18 2024-03-25 23:40:18 - INFO - action: client_closed | client_id: 5
+2024-04-07 22:50:38 2024-04-08 01:50:38 - INFO - action: config | result: success | client_id: 5 | server_address: server:12345 | loop_lapse: 20.0 | loop_period: 5.0 | log_level: DEBUG
+2024-04-07 22:50:39 2024-04-08 01:50:39 - INFO - action: send_bets | result: success | client_id: 5 | bets_sent: 991 | size: 46724
+2024-04-07 22:50:39 2024-04-08 01:50:39 - INFO - action: receive_message | result: success | client_id: 5 | bets_received: 991
+2024-04-07 22:50:39 2024-04-08 01:50:39 - INFO - action: receive_message | result: success | client_id: 5 | winners: -
+2024-04-07 22:50:39 2024-04-08 01:50:39 - INFO - action: client_closed | client_id: 5
 ```
 
 * CLiente 4 sí tiene ganadores:
 ```
-2024-03-25 20:40:16 2024-03-25 23:40:16 - INFO - action: config | result: success | client_id: 4 | server_address: server:12345 | loop_lapse: 20.0 | loop_period: 5.0 | log_level: DEBUG
-2024-03-25 20:40:16 2024-03-25 23:40:16 - INFO - action: send_bets | result: success | client_id: 4 | bets_sent: 200 | size: 8965
-2024-03-25 20:40:16 2024-03-25 23:40:16 - INFO - action: receive_message | result: success | client_id: 4 | server_bets_received: 200
+2024-04-07 22:50:37 2024-04-08 01:50:37 - INFO - action: config | result: success | client_id: 4 | server_address: server:12345 | loop_lapse: 20.0 | loop_period: 5.0 | log_level: DEBUG
+2024-04-07 22:50:38 2024-04-08 01:50:38 - INFO - action: send_bets | result: success | client_id: 4 | bets_sent: 2000 | size: 94368
+2024-04-07 22:50:38 2024-04-08 01:50:38 - INFO - action: receive_message | result: success | client_id: 4 | bets_received: 2000
 ...
-2024-03-25 20:40:16 2024-03-25 23:40:16 - INFO - action: send_bets | result: success | client_id: 4 | bets_sent: 38 | size: 1776
-2024-03-25 20:40:16 2024-03-25 23:40:16 - INFO - action: receive_message | result: success | client_id: 4 | server_bets_received: 38
-2024-03-25 20:40:18 2024-03-25 23:40:18 - INFO - action: receive_message | result: success | client_id: 4 | winners_amount: 2
-2024-03-25 20:40:18 2024-03-25 23:40:18 - INFO - action: client_closed | client_id: 4
-```
-------
-
-Caso de shutdown de servidor:
-* Servidor informa su shutdown:
-```
-...
-2024-03-25 21:08:27 2024-03-26 00:08:27 INFO     action: receive_message | result: success | ip: 172.25.125.5 | bets_received: 1
-2024-03-25 21:08:27 2024-03-26 00:08:27 INFO     action: sigterm_received | result: initiating_shutdown
-2024-03-25 21:08:27 2024-03-26 00:08:27 INFO     action: send_error | result: success | ip: 172.25.125.3
-2024-03-25 21:08:27 2024-03-26 00:08:27 INFO     action: send_error | result: success | ip: 172.25.125.4
-2024-03-25 21:08:27 2024-03-26 00:08:27 INFO     action: send_error | result: success | ip: 172.25.125.5
-2024-03-25 21:08:27 2024-03-26 00:08:27 INFO     action: send_error | result: success | ip: 172.25.125.6
-2024-03-25 21:08:27 2024-03-26 00:08:27 INFO     action: send_error | result: success | ip: 172.25.125.7
-```
-
-* Cliente 1:
-```
-...
-2024-03-25 21:08:27 2024-03-26 00:08:27 - INFO - action: receive_message | result: success | client_id: 4 | server_bets_received: 1
-2024-03-25 21:08:27 2024-03-26 00:08:27 - INFO - action: send_bets | result: success | client_id: 4 | bets_sent: 1 | size: 39
-2024-03-25 21:08:27 2024-03-26 00:08:27 - INFO - action: receive_message | result: success | client_id: 4 | server_bets_received: Server shutdown
-2024-03-25 21:08:27 2024-03-26 00:08:27 - ERROR - action: receive_message | result: connection_timeout | client_id: 4 | error: Server shutdown
-2024-03-25 21:08:27 2024-03-26 00:08:27 - INFO - action: client_closed | client_id: 4
+2024-04-07 22:50:38 2024-04-08 01:50:38 - INFO - action: send_bets | result: success | client_id: 4 | bets_sent: 1238 | size: 57921
+2024-04-07 22:50:38 2024-04-08 01:50:38 - INFO - action: receive_message | result: success | client_id: 4 | bets_received: 1238
+2024-04-07 22:50:39 2024-04-08 01:50:39 - INFO - action: receive_message | result: success | client_id: 4 | winners: 34963649, 35635602
+2024-04-07 22:50:39 2024-04-08 01:50:39 - INFO - action: client_closed | client_id: 4
 ```
